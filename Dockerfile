@@ -1,33 +1,35 @@
 # BUILD STAGE
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
-WORKDIR /src
 
-# 1. Copy the Scraper project file
-COPY ["sec-scraper.csproj", "./"]
+# We set the WORKDIR to /app, but we will place our code 
+# in a subfolder so the relative ".." paths work.
+WORKDIR /app
 
-# 2. Use Wildcards to find the FocusDB project
-# This looks in ANY casing for UserRegistration/Backend/FocusDB/
-# COPY ["UserRegistration/[Bb]ackend/[Ff]ocus[Dd][Bb]/*.csproj", "UserRegistration/Backend/FocusDB/"]
+# 1. Create the folder structure
+# This ensures that /app/Scraper and /app/UserRegistration exist side-by-side
+COPY ["sec-scraper.csproj", "Scraper/"]
 COPY ["UserRegistration/Backend/FocusDB/FocusDB.csproj", "UserRegistration/Backend/FocusDB/"]
 COPY ["UserRegistration/Backend/FocusLib/FocusLib.csproj", "UserRegistration/Backend/FocusLib/"]
 
-# 3. Restore
+# 2. Move into the Scraper folder to restore
+WORKDIR /app/Scraper
 RUN dotnet restore "sec-scraper.csproj"
 
-# 4. Copy everything else
-COPY ["UserRegistration/Backend/FocusDB/", "UserRegistration/Backend/FocusDB/"]
-COPY ["UserRegistration/Backend/FocusLib/", "UserRegistration/Backend/FocusLib/"]
-COPY [".", "."]
+# 3. Copy the rest of the source code
+# We go back to /app to copy everything into the right spots
+WORKDIR /app
+COPY . .
 
-# 5. Publish
-# We use --no-restore because we already did it in step 3
-RUN dotnet publish "sec-scraper.csproj" -c Release -o /app --no-restore
+# 4. Publish from the Scraper directory
+WORKDIR /app/Scraper
+RUN dotnet publish "sec-scraper.csproj" -c Release -o /publish --no-restore
 
 # RUNTIME STAGE
 FROM mcr.microsoft.com/dotnet/runtime:8.0 AS final
 WORKDIR /app
-COPY --from=build /app .
+COPY --from=build /publish .
 
+# Install Chromium for Puppeteer
 RUN apt-get update && apt-get install -y \
     chromium \
     fonts-liberation \
