@@ -1,0 +1,45 @@
+name: Scraper Docker Build
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Checkout Scraper
+        uses: actions/checkout@v4
+        with:
+          path: . 
+
+      - name: 2. Checkout Backend
+        uses: actions/checkout@v4
+        with:
+          repository: focus-universal/fcuv-app-portal-backend
+          token: ${{ secrets.GH_PAT }}
+          # We check it out to a clean folder name
+          path: UserRegistration/Backend
+
+      - name: 3. DIAGNOSTIC - Map the paths
+        run: |
+          echo "--- Searching for all .csproj files ---"
+          find . -name "*.csproj"
+          echo "--- Verifying the FocusDB folder casing ---"
+          ls -R UserRegistration/
+
+      - name: 4. Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 5. Build and Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/sec-scraper:latest
