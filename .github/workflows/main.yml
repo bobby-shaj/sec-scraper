@@ -42,4 +42,4 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/sec-scraper:latest
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/focusportal:scraper-latest
