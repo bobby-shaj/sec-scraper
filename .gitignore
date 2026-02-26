@@ -1,1 +1,43 @@
-﻿.vs/
+﻿# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+build/
+bin/
+obj/
+
+# NuGet Packages
+*.nupkg
+# The packages folder can be filled with items of several gigabytes
+# and should not be checked in.
+**/packages/*
+# Except build/ folder which is used by some NuGet packages.
+!**/packages/build/
+# Uncomment if using NuGet Restore and you want to ignore the folder
+# .nuget/
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Visual Studio Cache/Python/Node
+.vs/
+.vscode/
+*.swp
+*.bak
+*.cache
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# User-specific project settings
+*.user
+*.userosscache
+*.suo
+*.tmp
