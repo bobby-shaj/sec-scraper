@@ -1,0 +1,41 @@
+name: Scraper Docker Build
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: # Allows you to manually trigger a build from the UI
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1. Checkout Scraper (This Repo)
+        uses: actions/checkout@v4
+        with:
+          # Puts scraper files in the root of the runner
+          path: . 
+
+      - name: 2. Checkout Backend (The FocusDB Repo)
+        uses: actions/checkout@v4
+        with:
+          repository: focus-universal/fcuv-app-portal-backend
+          token: ${{ secrets.GH_PAT }}
+          # RE-CREATES YOUR LOCAL PATH: ..\UserRegistration\Backend\FocusDB\
+          path: UserRegistration 
+
+      - name: 3. Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: 4. Build and Push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          # Context is '.' so Docker sees the Scraper AND the 'UserRegistration' folder
+          context: .
+          file: ./Dockerfile
+          push: true
+          # Replace 'your-docker-id' with your actual Docker Hub username
+          tags: your-docker-id/sec-scraper:latest
