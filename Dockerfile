@@ -7,16 +7,21 @@ COPY ["sec-scraper.csproj", "./"]
 
 # 2. Use Wildcards to find the FocusDB project
 # This looks in ANY casing for UserRegistration/Backend/FocusDB/
-COPY ["UserRegistration/[Bb]ackend/[Ff]ocus[Dd][Bb]/*.csproj", "UserRegistration/Backend/FocusDB/"]
+# COPY ["UserRegistration/[Bb]ackend/[Ff]ocus[Dd][Bb]/*.csproj", "UserRegistration/Backend/FocusDB/"]
+COPY ["UserRegistration/Backend/FocusDB/FocusDB.csproj", "UserRegistration/Backend/FocusDB/"]
+COPY ["UserRegistration/Backend/FocusLib/FocusLib.csproj", "UserRegistration/Backend/FocusLib/"]
 
 # 3. Restore
 RUN dotnet restore "sec-scraper.csproj"
 
 # 4. Copy everything else
-COPY . .
+COPY ["UserRegistration/Backend/FocusDB/", "UserRegistration/Backend/FocusDB/"]
+COPY ["UserRegistration/Backend/FocusLib/", "UserRegistration/Backend/FocusLib/"]
+COPY [".", "."]
 
 # 5. Publish
-RUN dotnet publish "sec-scraper.csproj" -c Release -o /app
+# We use --no-restore because we already did it in step 3
+RUN dotnet publish "sec-scraper.csproj" -c Release -o /app --no-restore
 
 # RUNTIME STAGE
 FROM mcr.microsoft.com/dotnet/runtime:8.0 AS final
