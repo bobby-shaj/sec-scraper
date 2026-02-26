@@ -14,7 +14,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           # Puts scraper files in the root of the runner
-          path: . 
+          path: scraper-repo 
 
       - name: 2. Checkout Backend (The FocusDB Repo)
         uses: actions/checkout@v4
@@ -35,7 +35,10 @@ jobs:
         with:
           # Context is '.' so Docker sees the Scraper AND the 'UserRegistration' folder
           context: .
-          file: ./Dockerfile
+          # Point to the Dockerfile inside the scraper folder
+          file: ./scraper-repo/Dockerfile
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/sec-scraper:latest
           push: true
           # Replace 'your-docker-id' with your actual Docker Hub username
           tags: your-docker-id/sec-scraper:latest
