@@ -3,17 +3,19 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 # 1. Copy the Scraper project file
-COPY ["sec-scraper.csproj", "./"]
+COPY ["scraper-repo/sec-scraper.csproj", "scraper-repo/"]
 
 # Copy the FocusDB project file using the path expected by your .csproj
 # We use the 'UserRegistration' folder we created in Scraper repository GitHub Action
 COPY ["UserRegistration/Backend/FocusDB/FocusDB.csproj", "UserRegistration/Backend/FocusDB/"]
 
 # 2. Restore the scraper (this automatically restores the FocusDB dependency)
-RUN dotnet restore "sec-scraper.csproj"
+RUN dotnet restore "scraper-repo/sec-scraper.csproj"
 
 # 3. Copy everything else and publish
 COPY . .
+
+WORKDIR "/src/scraper-repo"
 RUN dotnet publish "sec-scraper.csproj" -c Release -o /app
 
 # RUNTIME STAGE
