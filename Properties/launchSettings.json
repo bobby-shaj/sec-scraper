@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "sec-scraper": {
+      "commandName": "Project"
+    },
+    "Container (Dockerfile)": {
+      "commandName": "Docker"
+    }
+  }
+}
