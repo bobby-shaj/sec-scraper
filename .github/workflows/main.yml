@@ -18,7 +18,7 @@ jobs:
       - name: 2. Checkout Backend
         uses: actions/checkout@v4
         with:
-          repository: YourGitHubUsername/fcuv-app-portal-backend
+          repository: focus-universal/fcuv-app-portal-backend
           token: ${{ secrets.GH_PAT }}
           # We check it out to a clean folder name
           path: UserRegistration/Backend
