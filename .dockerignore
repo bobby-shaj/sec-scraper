@@ -14,3 +14,5 @@ Dockerfile*
 
 # Optional: specifically allow the project files just to be safe
 !**/*.csproj
+
+UserRegistration/Backend/FocusPortal/
