@@ -36,7 +36,7 @@ namespace sec_scraper
 
         private readonly Dictionary<string, string> userAgentInfo = new Dictionary<string, string>()
         {
-            ["User-Agent"] = "FocusUniversal babak@focusuniversal.com"
+            ["User-Agent"] = "FocusUniversal (babak@focusuniversal.com)"
         };
 
 
@@ -263,7 +263,7 @@ namespace sec_scraper
                 {
                     // SEC Rule: Max 10 requests per second. Adding a small delay 
                     // helps keep the Azure IP from being "gray-listed"
-                    await Task.Delay(250);
+                    await Task.Delay(1000);
 
                     using (var page = await browser.NewPageAsync())
                     {
@@ -366,7 +366,8 @@ namespace sec_scraper
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogWarning("Could not process filing {Url}. Layout issue or Blocked.", pageUrl);
+                            var title = await page.GetTitleAsync();
+                            _logger.LogWarning("Failed URL: {Url}. SEC Page Title: {Title}", pageUrl, title);
                             // Crucial: Add an empty list or null to keep the ResultList count aligned with NewFilingCount
                             resultList.Add(null);
                         }
