@@ -49,7 +49,8 @@ namespace sec_scraper
             _logger = logger;
             _containerClient = containerClient;
             _serviceScopeFactory = serviceScopeFactory;
-            chromePath = Environment.GetEnvironmentVariable("CHROME_PATH") ?? "/usr/bin/chromium";
+            var rawPath = Environment.GetEnvironmentVariable("CHROME_PATH");
+            chromePath = !string.IsNullOrWhiteSpace(rawPath) ? rawPath.Trim() : "/usr/bin/chromium";
             launchOptions = new LaunchOptions
             {
                 ExecutablePath = chromePath,
