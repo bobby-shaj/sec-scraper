@@ -273,11 +273,29 @@ namespace sec_scraper
                         {
                             List<FilingExhibit>? filesList = new List<FilingExhibit>();
 
+                            // Set a standart desktop resolution
+                            await page.SetViewportAsync(new ViewPortOptions { Width = 1920, Height = 1080 });
+
+                            // Hide the fact that we are using Puppeteer at the JS level
                             await page.EvaluateExpressionOnNewDocumentAsync(@"
                                 () => {
                                     Object.defineProperty(navigator, 'webdriver', { get: () => false });
-                                }
-                            ");
+                                    window.chrome = { runtime: {} };
+                                
+                            }");
+
+                            // Set standart browser headers
+                            await page.SetExtraHttpHeadersAsync(new Dictionary<string, string>
+                            {
+                                { "Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8" },
+                                { "Accept-Language", "en-US,en;q=0.9" },
+                                { "Sec-Fetch-Dest", "document" },
+                                { "Sec-Fetch-Mode", "navigate" },
+                                { "Sec-Fetch-Site", "none" },
+                                { "Sec-Fetch-User", "?1" },
+                                { "Upgrade-Insecure-Requests", "1" }
+                            });
+
                             await page.SetUserAgentAsync(userAgentInfo["User-Agent"]);
 
                             //string navigationUrl = pageUrl.Contains("?") ? pageUrl : $"{pageUrl}?action=getattachment";
