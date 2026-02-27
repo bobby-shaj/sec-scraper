@@ -23,12 +23,9 @@ namespace sec_scraper
 
         private readonly IServiceScopeFactory _serviceScopeFactory;
         private readonly BlobContainerClient _containerClient;
+        private readonly string chromePath;
 
-        private readonly LaunchOptions launchOptions = new LaunchOptions
-        {
-            Headless = true,
-            ExecutablePath = @"C:\Users\babak\AppData\Local\Chromium\Application\chrome.exe"
-        };
+        private readonly LaunchOptions launchOptions;
 
         //private readonly Dictionary<string, string> userAgentInfo = new Dictionary<string, string>()
         //{
@@ -52,6 +49,18 @@ namespace sec_scraper
             _logger = logger;
             _containerClient = containerClient;
             _serviceScopeFactory = serviceScopeFactory;
+            chromePath = Environment.GetEnvironmentVariable("CHROME_PATH") ?? "/usr/bin/chromium";
+            launchOptions = new LaunchOptions
+            {
+                ExecutablePath = chromePath,
+                Headless = true,
+                Args = new[]
+                {
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage" // Critical for Linux containers
+                }
+            };
         }
 
         public async Task Execute()
