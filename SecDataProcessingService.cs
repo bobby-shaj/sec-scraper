@@ -261,11 +261,16 @@ namespace sec_scraper
             {
                 foreach (var pageUrl in indexFilesUrlList)
                 {
+                    // SEC Rule: Max 10 requests per second. Adding a small delay 
+                    // helps keep the Azure IP from being "gray-listed"
+                    await Task.Delay(250);
+
                     using (var page = await browser.NewPageAsync())
                     {
                         try
                         {
                             List<FilingExhibit>? filesList = new List<FilingExhibit>();
+
                             await page.EvaluateExpressionOnNewDocumentAsync(@"
                                 () => {
                                     Object.defineProperty(navigator, 'webdriver', { get: () => false });
@@ -273,26 +278,47 @@ namespace sec_scraper
                             ");
                             await page.SetUserAgentAsync(userAgentInfo["User-Agent"]);
 
-                            string navigationUrl = pageUrl.Contains("?") ? pageUrl : $"{pageUrl}?action=getattachment";
+                            //string navigationUrl = pageUrl.Contains("?") ? pageUrl : $"{pageUrl}?action=getattachment";
                             await page.GoToAsync(pageUrl, new NavigationOptions
                             {
                                 WaitUntil = new[] { WaitUntilNavigation.Networkidle2 },
                                 Timeout = 60000
                             });
 
-                            _logger.LogInformation("Navigated to: {Url}", page.Url);
+                            //_logger.LogInformation("Navigated to: {Url}", page.Url);
 
-                            await page.ScreenshotAsync("puppeteer_view.png");
+                            //await page.ScreenshotAsync("puppeteer_view.png");
 
-                            var html = await page.GetContentAsync();
-                            await File.WriteAllTextAsync("puppeteer_source.html", html);
+                            //var html = await page.GetContentAsync();
+                            //await File.WriteAllTextAsync("puppeteer_source.html", html);
 
-                            _logger.LogInformation("Saved debug files. HTML length: {Length}", html.Length);
+                            //_logger.LogInformation("Saved debug files. HTML length: {Length}", html.Length);
 
                             var tableSelector = "table[summary='Document Format Files'], table.tableFile";
 
                             // Ensure the table actually exists
-                            await page.WaitForSelectorAsync(tableSelector, new WaitForSelectorOptions { Timeout = 10000 });
+                            try
+                            {
+                                await page.WaitForSelectorAsync(tableSelector, new WaitForSelectorOptions { Timeout = 10000 });
+                            }
+                            catch (WaitTaskTimeoutException)
+                            {
+                                // DIAGNOSTIC: If the table isn't found, log WHAT we are seeing instead.
+                                var title = await page.GetTitleAsync();
+                                var body = await page.GetContentAsync();
+                                var snippet = body.Length > 300 ? body.Substring(0, 300) : body;
+
+                                _logger.LogError("SEC Blocked/Different Layout at {Url}. Title: {Title}. Snippet: {Snippet}", pageUrl, title, snippet);
+
+                                // Stop the entire run if we are clearly blocked
+                                if (title.Contains("Request Rate") || title.Contains("Access Denied"))
+                                {
+                                    throw new Exception("Scraper blocked by SEC Rate Limiting.");
+                                }
+
+                                throw; // Continue to the outer catch
+                            }
+
                             var rows = await page.QuerySelectorAllAsync($"{tableSelector} tr");
 
                             // Start at 1 to skip header
@@ -340,7 +366,9 @@ namespace sec_scraper
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogWarning("Could not find document table for {Url}. SEC might be using a different layout for this filing.", pageUrl);
+                            _logger.LogWarning("Could not process filing {Url}. Layout issue or Blocked.", pageUrl);
+                            // Crucial: Add an empty list or null to keep the ResultList count aligned with NewFilingCount
+                            resultList.Add(null);
                         }
                     }
                 }
