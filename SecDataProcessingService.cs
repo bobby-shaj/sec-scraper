@@ -59,7 +59,8 @@ namespace sec_scraper
                 {
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage" // Critical for Linux containers
+                    "--disable-dev-shm-usage",
+                    "--disable-blink-features=AutomationControlled" // Makes it harder to detect Puppeteer
                 }
             };
         }
@@ -116,6 +117,7 @@ namespace sec_scraper
 
                         if (filingCountSEC > filingCountDB)
                         {
+                            _logger.LogInformation("Babak, in conditional!!");
                             int newFilingCount = filingCountSEC - filingCountDB;
                             var filingExhibitsList = await GetFilingExhibitData(tenant.Cik, fetchedSecData, newFilingCount);
                             var ids = await InsertNewFilingsToDB(fetchedSecData!, filingExhibitsList, newFilingCount, tenant.Cik, filingRepo);
