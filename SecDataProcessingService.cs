@@ -60,7 +60,8 @@ namespace sec_scraper
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
-                    "--disable-blink-features=AutomationControlled" // Makes it harder to detect Puppeteer
+                    "--disable-blink-features=AutomationControlled", // Makes it harder to detect Puppeteer
+                    "--lang=en-US,en"
                 }
             };
         }
@@ -261,6 +262,7 @@ namespace sec_scraper
 
             using (var browser = await Puppeteer.LaunchAsync(launchOptions))
             {
+                int counter = 0;
                 foreach (var pageUrl in indexFilesUrlList)
                 {
                     // SEC Rule: Max 10 requests per second. Adding a small delay 
@@ -299,6 +301,19 @@ namespace sec_scraper
                             await page.SetUserAgentAsync(userAgentInfo["User-Agent"]);
 
                             //string navigationUrl = pageUrl.Contains("?") ? pageUrl : $"{pageUrl}?action=getattachment";
+                            if (counter == 0)
+                            {
+                                try
+                                {
+                                    await page.GoToAsync("https://www.google.com", WaitUntilNavigation.Networkidle2);
+                                    Console.WriteLine($"DEBUG: Google Title: {await page.GetTitleAsync()}");
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.WriteLine($"DEBUG: Google Failed: {ex.Message}");
+                                }
+                            }
+
                             await page.GoToAsync(pageUrl, new NavigationOptions
                             {
                                 WaitUntil = new[] { WaitUntilNavigation.Networkidle2 },
@@ -392,6 +407,7 @@ namespace sec_scraper
                             resultList.Add(null);
                         }
                     }
+                    counter++; 
                 }
             }
             resultList.Reverse();
