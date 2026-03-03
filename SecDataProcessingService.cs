@@ -60,6 +60,7 @@ namespace sec_scraper
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
+                    "--headless=old"
                     //"--disable-blink-features=AutomationControlled", // Makes it harder to detect Puppeteer
                     //"--lang=en-US,en"
                 }
