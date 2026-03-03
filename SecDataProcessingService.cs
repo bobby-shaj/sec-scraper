@@ -1,4 +1,5 @@
-﻿using Azure.Storage.Blobs;
+﻿using Azure;
+using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using FocusDB.Repositories.Interfaces;
 using FocusLib.Models.DB;
@@ -285,11 +286,12 @@ namespace sec_scraper
                 int counter = 0;
                 foreach (var pageUrl in indexFilesUrlList)
                 {
-                    if (counter > 2) { break; }
+                    Console.WriteLine($"Navigating to: {pageUrl}, Counter: {counter}");
+                    if (counter > 5) { break; }
 
                     // SEC Rule: Max 10 requests per second. Adding a small delay 
                     // helps keep the Azure IP from being "gray-listed"
-                    await Task.Delay(1000);
+                    await Task.Delay(2000);
 
                     using (var page = await browser.NewPageAsync())
                     {
@@ -337,7 +339,7 @@ namespace sec_scraper
                                 }
                             }
 
-                            await page.GoToAsync(pageUrl, new NavigationOptions
+                            var response = await page.GoToAsync(pageUrl, new NavigationOptions
                             {
                                 WaitUntil = new[] { WaitUntilNavigation.Networkidle2 },
                                 Timeout = 60000
@@ -355,27 +357,31 @@ namespace sec_scraper
                             var tableSelector = "table[summary='Document Format Files'], table.tableFile";
 
                             // Ensure the table actually exists
-                            try
-                            {
-                                await page.WaitForSelectorAsync(tableSelector, new WaitForSelectorOptions { Timeout = 10000 });
-                            }
-                            catch (WaitTaskTimeoutException)
-                            {
-                                // DIAGNOSTIC: If the table isn't found, log WHAT we are seeing instead.
-                                var title = await page.GetTitleAsync();
-                                var body = await page.GetContentAsync();
-                                var snippet = body.Length > 300 ? body.Substring(0, 300) : body;
+                            //try
+                            //{
+                            //    await page.WaitForSelectorAsync(tableSelector, new WaitForSelectorOptions { Timeout = 10000 });
+                            //}
+                            //catch (WaitTaskTimeoutException)
+                            //{
+                            //    // DIAGNOSTIC: If the table isn't found, log WHAT we are seeing instead.
+                            //    var title = await page.GetTitleAsync();
+                            //    var body = await page.GetContentAsync();
+                            //    var snippet = body.Length > 300 ? body.Substring(0, 300) : body;
 
-                                _logger.LogError("SEC Blocked/Different Layout at {Url}. Title: {Title}. Snippet: {Snippet}", pageUrl, title, snippet);
+                            //    _logger.LogError("SEC Blocked/Different Layout at {Url}. Title: {Title}. Snippet: {Snippet}", pageUrl, title, snippet);
 
-                                // Stop the entire run if we are clearly blocked
-                                if (title.Contains("Request Rate") || title.Contains("Access Denied"))
-                                {
-                                    throw new Exception("Scraper blocked by SEC Rate Limiting.");
-                                }
+                            //    // Stop the entire run if we are clearly blocked
+                            //    if (title.Contains("Request Rate") || title.Contains("Access Denied"))
+                            //    {
+                            //        throw new Exception("Scraper blocked by SEC Rate Limiting.");
+                            //    }
 
-                                throw; // Continue to the outer catch
-                            }
+                            //    throw; // Continue to the outer catch
+                            //}
+
+                            var title = await page.GetTitleAsync();
+                            Console.WriteLine($"DEBUG: Response Status: {response?.Status}");
+                            Console.WriteLine($"DEBUG: SEC Page Title: {title}");
 
                             var rows = await page.QuerySelectorAllAsync($"{tableSelector} tr");
 
