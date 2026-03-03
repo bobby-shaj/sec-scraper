@@ -53,14 +53,14 @@ namespace sec_scraper
             chromePath = !string.IsNullOrWhiteSpace(rawPath) ? rawPath.Trim() : "/usr/bin/chromium";
             launchOptions = new LaunchOptions
             {
-                ExecutablePath = chromePath,
+                //ExecutablePath = chromePath,
                 Headless = true,
                 Args = new[]
                 {
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--headless=old"
+                    "--disable-dev-shm-usage"
+                    //"--headless=old"
                     //"--disable-blink-features=AutomationControlled", // Makes it harder to detect Puppeteer
                     //"--lang=en-US,en"
                 }
@@ -261,7 +261,25 @@ namespace sec_scraper
                 }
             }
 
-            using (var browser = await Puppeteer.LaunchAsync(launchOptions))
+            Console.WriteLine("Checking for compatible Chromium revision...");
+            var browserFetcher = new BrowserFetcher();
+            var revisionInfo = await browserFetcher.DownloadAsync();
+
+            var _launchOptions = new LaunchOptions
+            {
+                ExecutablePath = revisionInfo.GetExecutablePath(),
+                Headless = true,
+                Args = new[]
+                {
+                    "--no-sandbox",
+                    "--disable-setuid-sandbox",
+                    "--disable-dev-shm-usage"
+                }
+            };
+
+            Console.WriteLine($"Chromium ready at: {revisionInfo.GetExecutablePath()}");
+
+            using (var browser = await Puppeteer.LaunchAsync(_launchOptions))
             {
                 int counter = 0;
                 foreach (var pageUrl in indexFilesUrlList)

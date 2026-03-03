@@ -27,11 +27,20 @@ FROM mcr.microsoft.com/dotnet/runtime:8.0 AS final
 WORKDIR /app
 COPY --from=build /publish .
 
-# Install Chromium for Puppeteer
+# Install dependencies for the bundled Chromium
 RUN apt-get update && apt-get install -y \
-    chromium \
-    fonts-liberation \
+    wget \
+    gnupg \
+    ca-certificates \
     libnss3 \
+    libatk-bridge2.0-0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    libpangocairo-1.0-0 \
+    libxshmfence1 \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
