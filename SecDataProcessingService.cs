@@ -51,21 +51,21 @@ namespace sec_scraper
             _containerClient = containerClient;
             _serviceScopeFactory = serviceScopeFactory;
             var rawPath = Environment.GetEnvironmentVariable("CHROME_PATH");
-            chromePath = !string.IsNullOrWhiteSpace(rawPath) ? rawPath.Trim() : "/usr/bin/chromium";
-            launchOptions = new LaunchOptions
-            {
-                //ExecutablePath = chromePath,
-                Headless = true,
-                Args = new[]
-                {
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage"
-                    //"--headless=old"
-                    //"--disable-blink-features=AutomationControlled", // Makes it harder to detect Puppeteer
-                    //"--lang=en-US,en"
-                }
-            };
+            //chromePath = !string.IsNullOrWhiteSpace(rawPath) ? rawPath.Trim() : "/usr/bin/chromium";
+            //launchOptions = new LaunchOptions
+            //{
+            //    //ExecutablePath = chromePath,
+            //    Headless = true,
+            //    Args = new[]
+            //    {
+            //        "--no-sandbox",
+            //        "--disable-setuid-sandbox",
+            //        "--disable-dev-shm-usage"
+            //        //"--headless=old"
+            //        //"--disable-blink-features=AutomationControlled", // Makes it harder to detect Puppeteer
+            //        //"--lang=en-US,en"
+            //    }
+            //};
         }
 
         public async Task Execute()
@@ -123,10 +123,10 @@ namespace sec_scraper
                             _logger.LogInformation("Babak, in conditional!!");
                             int newFilingCount = filingCountSEC - filingCountDB;
                             var filingExhibitsList = await GetFilingExhibitData(tenant.Cik, fetchedSecData, newFilingCount);
-                            //var ids = await InsertNewFilingsToDB(fetchedSecData!, filingExhibitsList, newFilingCount, tenant.Cik, filingRepo);
-                            //await CreateFilingPdfDocs(tenant.Cik, filingExhibitsList, fetchedSecData);
-                            //await InsertFilingExhibitsToDB(ids, filingExhibitsList!, filingRepo);
-                            //await DownloadFiles(tenant.Cik, fetchedSecData, newFilingCount);
+                            var ids = await InsertNewFilingsToDB(fetchedSecData!, filingExhibitsList, newFilingCount, tenant.Cik, filingRepo);
+                            await CreateFilingPdfDocs(tenant.Cik, filingExhibitsList, fetchedSecData);
+                            await InsertFilingExhibitsToDB(ids, filingExhibitsList!, filingRepo);
+                            await DownloadFiles(tenant.Cik, fetchedSecData, newFilingCount);
                             Console.WriteLine("Done!");
                         }
                     }
@@ -283,12 +283,8 @@ namespace sec_scraper
 
             using (var browser = await Puppeteer.LaunchAsync(_launchOptions))
             {
-                int counter = 0;
                 foreach (var pageUrl in indexFilesUrlList)
                 {
-                    Console.WriteLine($"Navigating to: {pageUrl}, Counter: {counter}");
-                    if (counter > 5) { break; }
-
                     // SEC Rule: Max 10 requests per second. Adding a small delay 
                     // helps keep the Azure IP from being "gray-listed"
                     await Task.Delay(2000);
@@ -303,56 +299,12 @@ namespace sec_scraper
                             // Set a standart desktop resolution
                             await page.SetViewportAsync(new ViewPortOptions { Width = 1920, Height = 1080 });
 
-                            // Hide the fact that we are using Puppeteer at the JS level
-                            //await page.EvaluateExpressionOnNewDocumentAsync(@"
-                            //    () => {
-                            //        Object.defineProperty(navigator, 'webdriver', { get: () => false });
-                            //        window.chrome = { runtime: {} };
-                                
-                            //}");
-
-                            // Set standart browser headers
-                            //await page.SetExtraHttpHeadersAsync(new Dictionary<string, string>
-                            //{
-                            //    { "Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8" },
-                            //    { "Accept-Language", "en-US,en;q=0.9" },
-                            //    { "Sec-Fetch-Dest", "document" },
-                            //    { "Sec-Fetch-Mode", "navigate" },
-                            //    //{ "Sec-Fetch-Site", "none" },
-                            //    { "Sec-Fetch-User", "?1" },
-                            //    { "Upgrade-Insecure-Requests", "1" }
-                            //});
-
-
-
-                            //string navigationUrl = pageUrl.Contains("?") ? pageUrl : $"{pageUrl}?action=getattachment";
-                            if (counter == 0)
-                            {
-                                try
-                                {
-                                    await page.GoToAsync("https://www.google.com", WaitUntilNavigation.Networkidle2);
-                                    Console.WriteLine($"DEBUG: Google Title: {await page.GetTitleAsync()}");
-                                }
-                                catch (Exception ex)
-                                {
-                                    Console.WriteLine($"DEBUG: Google Failed: {ex.Message}");
-                                }
-                            }
-
                             var response = await page.GoToAsync(pageUrl, new NavigationOptions
                             {
                                 WaitUntil = new[] { WaitUntilNavigation.Networkidle2 },
                                 Timeout = 60000
                             });
 
-                            //_logger.LogInformation("Navigated to: {Url}", page.Url);
-
-                            //await page.ScreenshotAsync("puppeteer_view.png");
-
-                            //var html = await page.GetContentAsync();
-                            //await File.WriteAllTextAsync("puppeteer_source.html", html);
-
-                            //_logger.LogInformation("Saved debug files. HTML length: {Length}", html.Length);
 
                             var tableSelector = "table[summary='Document Format Files'], table.tableFile";
 
@@ -436,7 +388,6 @@ namespace sec_scraper
                             resultList.Add(null);
                         }
                     }
-                    counter++; 
                 }
             }
             resultList.Reverse();
