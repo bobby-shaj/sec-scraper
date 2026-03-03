@@ -32,6 +32,7 @@ RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
     ca-certificates \
+    # Standard Chrome dependencies
     libnss3 \
     libatk-bridge2.0-0 \
     libxcomposite1 \
@@ -41,6 +42,32 @@ RUN apt-get update && apt-get install -y \
     libasound2 \
     libpangocairo-1.0-0 \
     libxshmfence1 \
+    # ADD THESE NEW ONES FOR MODERN REVISIONS:
+    libatk1.0-0 \
+    libc6 \
+    libcairo2 \
+    libcups2 \
+    libdbus-1-3 \
+    libexpat1 \
+    libfontconfig1 \
+    libgcc1 \
+    libgconf-2-4 \
+    libgdk-pixbuf2.0-0 \
+    libglib2.0-0 \
+    libgtk-3-0 \
+    libnspr4 \
+    libpango-1.0-0 \
+    libstdc++6 \
+    libx11-6 \
+    libx11-xcb1 \
+    libxcb1 \
+    libxcursor1 \
+    libxext6 \
+    libxfixes3 \
+    libxi6 \
+    libxrender1 \
+    libxss1 \
+    libxtst6 \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
