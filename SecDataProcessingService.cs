@@ -60,8 +60,8 @@ namespace sec_scraper
                     "--no-sandbox",
                     "--disable-setuid-sandbox",
                     "--disable-dev-shm-usage",
-                    "--disable-blink-features=AutomationControlled", // Makes it harder to detect Puppeteer
-                    "--lang=en-US,en"
+                    //"--disable-blink-features=AutomationControlled", // Makes it harder to detect Puppeteer
+                    //"--lang=en-US,en"
                 }
             };
         }
@@ -121,10 +121,10 @@ namespace sec_scraper
                             _logger.LogInformation("Babak, in conditional!!");
                             int newFilingCount = filingCountSEC - filingCountDB;
                             var filingExhibitsList = await GetFilingExhibitData(tenant.Cik, fetchedSecData, newFilingCount);
-                            var ids = await InsertNewFilingsToDB(fetchedSecData!, filingExhibitsList, newFilingCount, tenant.Cik, filingRepo);
-                            await CreateFilingPdfDocs(tenant.Cik, filingExhibitsList, fetchedSecData);
-                            await InsertFilingExhibitsToDB(ids, filingExhibitsList!, filingRepo);
-                            await DownloadFiles(tenant.Cik, fetchedSecData, newFilingCount);
+                            //var ids = await InsertNewFilingsToDB(fetchedSecData!, filingExhibitsList, newFilingCount, tenant.Cik, filingRepo);
+                            //await CreateFilingPdfDocs(tenant.Cik, filingExhibitsList, fetchedSecData);
+                            //await InsertFilingExhibitsToDB(ids, filingExhibitsList!, filingRepo);
+                            //await DownloadFiles(tenant.Cik, fetchedSecData, newFilingCount);
                             Console.WriteLine("Done!");
                         }
                     }
@@ -265,6 +265,8 @@ namespace sec_scraper
                 int counter = 0;
                 foreach (var pageUrl in indexFilesUrlList)
                 {
+                    if (counter > 2) { break; }
+
                     // SEC Rule: Max 10 requests per second. Adding a small delay 
                     // helps keep the Azure IP from being "gray-listed"
                     await Task.Delay(1000);
@@ -275,30 +277,31 @@ namespace sec_scraper
                         {
                             List<FilingExhibit>? filesList = new List<FilingExhibit>();
 
+                            await page.SetUserAgentAsync(userAgentInfo["User-Agent"]);
                             // Set a standart desktop resolution
                             await page.SetViewportAsync(new ViewPortOptions { Width = 1920, Height = 1080 });
 
                             // Hide the fact that we are using Puppeteer at the JS level
-                            await page.EvaluateExpressionOnNewDocumentAsync(@"
-                                () => {
-                                    Object.defineProperty(navigator, 'webdriver', { get: () => false });
-                                    window.chrome = { runtime: {} };
+                            //await page.EvaluateExpressionOnNewDocumentAsync(@"
+                            //    () => {
+                            //        Object.defineProperty(navigator, 'webdriver', { get: () => false });
+                            //        window.chrome = { runtime: {} };
                                 
-                            }");
+                            //}");
 
                             // Set standart browser headers
-                            await page.SetExtraHttpHeadersAsync(new Dictionary<string, string>
-                            {
-                                { "Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8" },
-                                { "Accept-Language", "en-US,en;q=0.9" },
-                                { "Sec-Fetch-Dest", "document" },
-                                { "Sec-Fetch-Mode", "navigate" },
-                                { "Sec-Fetch-Site", "none" },
-                                { "Sec-Fetch-User", "?1" },
-                                { "Upgrade-Insecure-Requests", "1" }
-                            });
+                            //await page.SetExtraHttpHeadersAsync(new Dictionary<string, string>
+                            //{
+                            //    { "Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8" },
+                            //    { "Accept-Language", "en-US,en;q=0.9" },
+                            //    { "Sec-Fetch-Dest", "document" },
+                            //    { "Sec-Fetch-Mode", "navigate" },
+                            //    //{ "Sec-Fetch-Site", "none" },
+                            //    { "Sec-Fetch-User", "?1" },
+                            //    { "Upgrade-Insecure-Requests", "1" }
+                            //});
 
-                            await page.SetUserAgentAsync(userAgentInfo["User-Agent"]);
+
 
                             //string navigationUrl = pageUrl.Contains("?") ? pageUrl : $"{pageUrl}?action=getattachment";
                             if (counter == 0)
