@@ -24,16 +24,6 @@ namespace sec_scraper
 
         private readonly IServiceScopeFactory _serviceScopeFactory;
         private readonly BlobContainerClient _containerClient;
-        private readonly string chromePath;
-
-        private readonly LaunchOptions launchOptions;
-
-        //private readonly Dictionary<string, string> userAgentInfo = new Dictionary<string, string>()
-        //{
-        //    { "User-Agent", "FocusUniversal babak@focusuniversal.com" },
-        //    { "Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8" },
-        //    { "Accept-Language", "en-US,en;q=0.5" }
-        //};
 
         private readonly Dictionary<string, string> userAgentInfo = new Dictionary<string, string>()
         {
@@ -50,22 +40,6 @@ namespace sec_scraper
             _logger = logger;
             _containerClient = containerClient;
             _serviceScopeFactory = serviceScopeFactory;
-            var rawPath = Environment.GetEnvironmentVariable("CHROME_PATH");
-            //chromePath = !string.IsNullOrWhiteSpace(rawPath) ? rawPath.Trim() : "/usr/bin/chromium";
-            //launchOptions = new LaunchOptions
-            //{
-            //    //ExecutablePath = chromePath,
-            //    Headless = true,
-            //    Args = new[]
-            //    {
-            //        "--no-sandbox",
-            //        "--disable-setuid-sandbox",
-            //        "--disable-dev-shm-usage"
-            //        //"--headless=old"
-            //        //"--disable-blink-features=AutomationControlled", // Makes it harder to detect Puppeteer
-            //        //"--lang=en-US,en"
-            //    }
-            //};
         }
 
         public async Task Execute()
@@ -121,13 +95,32 @@ namespace sec_scraper
                         if (filingCountSEC > filingCountDB)
                         {
                             _logger.LogInformation("Babak, in conditional!!");
-                            int newFilingCount = filingCountSEC - filingCountDB;
-                            var filingExhibitsList = await GetFilingExhibitData(tenant.Cik, fetchedSecData, newFilingCount);
-                            var ids = await InsertNewFilingsToDB(fetchedSecData!, filingExhibitsList, newFilingCount, tenant.Cik, filingRepo);
-                            await CreateFilingPdfDocs(tenant.Cik, filingExhibitsList, fetchedSecData);
-                            await InsertFilingExhibitsToDB(ids, filingExhibitsList!, filingRepo);
-                            await DownloadFiles(tenant.Cik, fetchedSecData, newFilingCount);
-                            Console.WriteLine("Done!");
+
+                            var browserFetcher = new BrowserFetcher();
+                            var revisionInfo = await browserFetcher.DownloadAsync();
+
+                            var launchOptions = new LaunchOptions
+                            {
+                                ExecutablePath = revisionInfo.GetExecutablePath(),
+                                Headless = true,
+                                Args = new[]
+                                {
+                                    "--no-sandbox", 
+                                    "--disable-setuid-sandbox", 
+                                    "--disable-dev-shm-usage"
+                                }
+                            };
+
+                            using (var browser = await Puppeteer.LaunchAsync(launchOptions))
+                            {
+                                int newFilingCount = filingCountSEC - filingCountDB;
+                                var filingExhibitsList = await GetFilingExhibitData(tenant.Cik, fetchedSecData, newFilingCount, browser);
+                                var ids = await InsertNewFilingsToDB(fetchedSecData!, filingExhibitsList, newFilingCount, tenant.Cik, filingRepo);
+                                await CreateFilingPdfDocs(tenant.Cik, filingExhibitsList, fetchedSecData, browser);
+                                await InsertFilingExhibitsToDB(ids, filingExhibitsList!, filingRepo);
+                                await DownloadFiles(tenant.Cik, fetchedSecData, newFilingCount);
+                                Console.WriteLine("Done!");
+                            }
                         }
                     }
                     catch (Exception ex)
@@ -149,84 +142,81 @@ namespace sec_scraper
         /// <returns></returns>
         private async Task CreateFilingPdfDocs(string cik,
                                                List<List<FilingExhibit?>?> filingExhibitsList,
-                                               SecFilingData secFilingData)
+                                               SecFilingData secFilingData,
+                                               IBrowser browser)
         {
-            using (var browser = await Puppeteer.LaunchAsync(launchOptions))
+            for (int i = 0; i < filingExhibitsList.Count; i++)
             {
-
-                for (int i = 0; i < filingExhibitsList.Count; i++)
+                if (filingExhibitsList.ElementAt(i) == null) continue;
+                using (var page = await browser.NewPageAsync())
                 {
-                    if (filingExhibitsList.ElementAt(i) == null) continue;
-                    using (var page = await browser.NewPageAsync())
+                    List<string> pdfDocuments = new List<string>();
+
+                    await page.EvaluateExpressionOnNewDocumentAsync(@"
+                            () => {
+                                Object.defineProperty(navigator, 'webdriver', { get: () => false });
+                            }
+                        ");
+                    await page.SetUserAgentAsync(userAgentInfo["User-Agent"]);
+
+                    var accessionNum = secFilingData.AccessionNumber?[i];
+                    List<byte[]> pdfArrayList = new List<byte[]>();
+
+                    foreach (FilingExhibit? document in filingExhibitsList.ElementAt(i)!)
                     {
-                        List<string> pdfDocuments = new List<string>();
-
-                        await page.EvaluateExpressionOnNewDocumentAsync(@"
-                                () => {
-                                    Object.defineProperty(navigator, 'webdriver', { get: () => false });
-                                }
-                            ");
-                        await page.SetUserAgentAsync(userAgentInfo["User-Agent"]);
-
-                        var accessionNum = secFilingData.AccessionNumber?[i];
-                        List<byte[]> pdfArrayList = new List<byte[]>();
-
-                        foreach (FilingExhibit? document in filingExhibitsList.ElementAt(i)!)
+                        await page.GoToAsync(document?.Url, new NavigationOptions
                         {
-                            await page.GoToAsync(document?.Url, new NavigationOptions
-                            {
-                                WaitUntil = new[] { WaitUntilNavigation.Networkidle2 },
-                                Timeout = 60000
-                            });
-                            byte[] pdfData = await page.PdfDataAsync(new PdfOptions
-                            {
-                                Format = PaperFormat.A4,
-                                PrintBackground = true,
-                            });
-                            pdfArrayList.Add(pdfData);
-                        }
-
-                        // 1. Prepare the memory stream for the final merged PDF
-                        using (var resultMs = new MemoryStream())
+                            WaitUntil = new[] { WaitUntilNavigation.Networkidle2 },
+                            Timeout = 60000
+                        });
+                        byte[] pdfData = await page.PdfDataAsync(new PdfOptions
                         {
-                            using (var resultPDF = new PdfDocument())
+                            Format = PaperFormat.A4,
+                            PrintBackground = true,
+                        });
+                        pdfArrayList.Add(pdfData);
+                    }
+
+                    // 1. Prepare the memory stream for the final merged PDF
+                    using (var resultMs = new MemoryStream())
+                    {
+                        using (var resultPDF = new PdfDocument())
+                        {
+                            foreach (var pdf in pdfArrayList)
                             {
-                                foreach (var pdf in pdfArrayList)
+                                using (var src = new MemoryStream(pdf))
                                 {
-                                    using (var src = new MemoryStream(pdf))
+                                    using (var srcPDF = PdfReader.Open(src, PdfDocumentOpenMode.Import))
                                     {
-                                        using (var srcPDF = PdfReader.Open(src, PdfDocumentOpenMode.Import))
+                                        for (int j = 0; j < srcPDF.PageCount; j++)
                                         {
-                                            for (int j = 0; j < srcPDF.PageCount; j++)
-                                            {
-                                                resultPDF.AddPage(srcPDF.Pages[j]);
-                                            }
+                                            resultPDF.AddPage(srcPDF.Pages[j]);
                                         }
                                     }
                                 }
-
-                                // 2. Save the PDF content into our result memory stream
-                                resultPDF.Save(resultMs);
                             }
 
-                            // 3. CRITICAL: Reset the stream position to the begining before uploading
-                            resultMs.Position = 0;
-
-                            // 4. Define the Azure Path (Virtual Directory structure)
-                            // Note: No Directory.Exists check needed
-                            string blobName = $"{cik}/{accessionNum}/file.pdf";
-                            var blobClient = _containerClient.GetBlobClient(blobName);
-
-                            // 5. Upload to Azure
-                            await blobClient.UploadAsync(resultMs, new BlobUploadOptions
-                            {
-                                HttpHeaders = new BlobHttpHeaders { ContentType = "application/pdf"}
-                            });
-
-                            _logger.LogInformation("Merged PDF uploaded to: {BlobName}", blobName);
+                            // 2. Save the PDF content into our result memory stream
+                            resultPDF.Save(resultMs);
                         }
-                        
+
+                        // 3. CRITICAL: Reset the stream position to the begining before uploading
+                        resultMs.Position = 0;
+
+                        // 4. Define the Azure Path (Virtual Directory structure)
+                        // Note: No Directory.Exists check needed
+                        string blobName = $"{cik}/{accessionNum}/file.pdf";
+                        var blobClient = _containerClient.GetBlobClient(blobName);
+
+                        // 5. Upload to Azure
+                        await blobClient.UploadAsync(resultMs, new BlobUploadOptions
+                        {
+                            HttpHeaders = new BlobHttpHeaders { ContentType = "application/pdf"}
+                        });
+
+                        _logger.LogInformation("Merged PDF uploaded to: {BlobName}", blobName);
                     }
+                        
                 }
             }
         }
@@ -241,7 +231,7 @@ namespace sec_scraper
         /// <param name="url"></param>
         /// <returns></returns>
         private async Task<List<List<FilingExhibit?>?>> GetFilingExhibitData(string cik, SecFilingData filing,
-                                                                                   int newFilingCount)
+                                                                                   int newFilingCount, IBrowser browser)
         {
             List<List<FilingExhibit>?> resultList = new List<List<FilingExhibit>?>();
 
@@ -262,131 +252,112 @@ namespace sec_scraper
                 }
             }
 
-            Console.WriteLine("Checking for compatible Chromium revision...");
-            var browserFetcher = new BrowserFetcher();
-            var revisionInfo = await browserFetcher.DownloadAsync();
 
-            var _launchOptions = new LaunchOptions
+
+
+            foreach (var pageUrl in indexFilesUrlList)
             {
-                ExecutablePath = revisionInfo.GetExecutablePath(),
-                Headless = true,
-                Args = new[]
+                // SEC Rule: Max 10 requests per second. Adding a small delay 
+                // helps keep the Azure IP from being "gray-listed"
+                await Task.Delay(2000);
+
+                using (var page = await browser.NewPageAsync())
                 {
-                    "--no-sandbox",
-                    "--disable-setuid-sandbox",
-                    "--disable-dev-shm-usage",
-                    "--disable-gpu" // Add this for good measure in containers
-                }
-            };
-
-            Console.WriteLine($"Chromium ready at: {revisionInfo.GetExecutablePath()}");
-
-            using (var browser = await Puppeteer.LaunchAsync(_launchOptions))
-            {
-                foreach (var pageUrl in indexFilesUrlList)
-                {
-                    // SEC Rule: Max 10 requests per second. Adding a small delay 
-                    // helps keep the Azure IP from being "gray-listed"
-                    await Task.Delay(2000);
-
-                    using (var page = await browser.NewPageAsync())
+                    try
                     {
-                        try
+                        List<FilingExhibit>? filesList = new List<FilingExhibit>();
+
+                        await page.SetUserAgentAsync(userAgentInfo["User-Agent"]);
+                        // Set a standart desktop resolution
+                        await page.SetViewportAsync(new ViewPortOptions { Width = 1920, Height = 1080 });
+
+                        var response = await page.GoToAsync(pageUrl, new NavigationOptions
                         {
-                            List<FilingExhibit>? filesList = new List<FilingExhibit>();
+                            WaitUntil = new[] { WaitUntilNavigation.Networkidle2 },
+                            Timeout = 60000
+                        });
 
-                            await page.SetUserAgentAsync(userAgentInfo["User-Agent"]);
-                            // Set a standart desktop resolution
-                            await page.SetViewportAsync(new ViewPortOptions { Width = 1920, Height = 1080 });
 
-                            var response = await page.GoToAsync(pageUrl, new NavigationOptions
+                        var tableSelector = "table[summary='Document Format Files'], table.tableFile";
+
+                        // Ensure the table actually exists
+                        //try
+                        //{
+                        //    await page.WaitForSelectorAsync(tableSelector, new WaitForSelectorOptions { Timeout = 10000 });
+                        //}
+                        //catch (WaitTaskTimeoutException)
+                        //{
+                        //    // DIAGNOSTIC: If the table isn't found, log WHAT we are seeing instead.
+                        //    var title = await page.GetTitleAsync();
+                        //    var body = await page.GetContentAsync();
+                        //    var snippet = body.Length > 300 ? body.Substring(0, 300) : body;
+
+                        //    _logger.LogError("SEC Blocked/Different Layout at {Url}. Title: {Title}. Snippet: {Snippet}", pageUrl, title, snippet);
+
+                        //    // Stop the entire run if we are clearly blocked
+                        //    if (title.Contains("Request Rate") || title.Contains("Access Denied"))
+                        //    {
+                        //        throw new Exception("Scraper blocked by SEC Rate Limiting.");
+                        //    }
+
+                        //    throw; // Continue to the outer catch
+                        //}
+
+                        var title = await page.GetTitleAsync();
+                        Console.WriteLine($"DEBUG: Response Status: {response?.Status}");
+                        Console.WriteLine($"DEBUG: SEC Page Title: {title}");
+
+                        var rows = await page.QuerySelectorAllAsync($"{tableSelector} tr");
+
+                        // Start at 1 to skip header
+                        for (int i = 2; i < rows.Length; i++)
+                        {
+                            var cols = await rows[i].QuerySelectorAllAsync("td");
+                            if (cols.Length < 5) continue; // Safety check for empty/short rows
+
+                            // We want first row (main file) and subsequent row(s) if attachments, i.e. EX-4.1, exist 
+                            // otherwise, break and don't scrape any further 
+                            var typeHandle = await cols[3].GetPropertyAsync("textContent");
+                            var type = (await typeHandle.JsonValueAsync<string>())?.Trim() ?? "";
+
+                            // Our business logic: Main file (i=1) or Exhibits (Ex-)
+                            if (i > 2 && !type.StartsWith("EX-", StringComparison.OrdinalIgnoreCase)) break;
+
+                            var dto = new FilingExhibit { Type = type };
+
+                            var descHandle = await cols[1].GetPropertyAsync("textContent");
+                            dto.Description = (await descHandle.JsonValueAsync<string>())?.Trim();
+
+                            var anchorTag = await cols[2].QuerySelectorAsync("a");
+                            if (anchorTag != null)
                             {
-                                WaitUntil = new[] { WaitUntilNavigation.Networkidle2 },
-                                Timeout = 60000
-                            });
+                                var titleHandle = await anchorTag.GetPropertyAsync("textContent");
+                                dto.Title = (await titleHandle.JsonValueAsync<string>())?.Trim();
 
+                                var hrefHandle = await anchorTag.GetPropertyAsync("href");
+                                var aUrl = await hrefHandle.JsonValueAsync<string>();
 
-                            var tableSelector = "table[summary='Document Format Files'], table.tableFile";
-
-                            // Ensure the table actually exists
-                            //try
-                            //{
-                            //    await page.WaitForSelectorAsync(tableSelector, new WaitForSelectorOptions { Timeout = 10000 });
-                            //}
-                            //catch (WaitTaskTimeoutException)
-                            //{
-                            //    // DIAGNOSTIC: If the table isn't found, log WHAT we are seeing instead.
-                            //    var title = await page.GetTitleAsync();
-                            //    var body = await page.GetContentAsync();
-                            //    var snippet = body.Length > 300 ? body.Substring(0, 300) : body;
-
-                            //    _logger.LogError("SEC Blocked/Different Layout at {Url}. Title: {Title}. Snippet: {Snippet}", pageUrl, title, snippet);
-
-                            //    // Stop the entire run if we are clearly blocked
-                            //    if (title.Contains("Request Rate") || title.Contains("Access Denied"))
-                            //    {
-                            //        throw new Exception("Scraper blocked by SEC Rate Limiting.");
-                            //    }
-
-                            //    throw; // Continue to the outer catch
-                            //}
-
-                            var title = await page.GetTitleAsync();
-                            Console.WriteLine($"DEBUG: Response Status: {response?.Status}");
-                            Console.WriteLine($"DEBUG: SEC Page Title: {title}");
-
-                            var rows = await page.QuerySelectorAllAsync($"{tableSelector} tr");
-
-                            // Start at 1 to skip header
-                            for (int i = 2; i < rows.Length; i++)
-                            {
-                                var cols = await rows[i].QuerySelectorAllAsync("td");
-                                if (cols.Length < 5) continue; // Safety check for empty/short rows
-
-                                // We want first row (main file) and subsequent row(s) if attachments, i.e. EX-4.1, exist 
-                                // otherwise, break and don't scrape any further 
-                                var typeHandle = await cols[3].GetPropertyAsync("textContent");
-                                var type = (await typeHandle.JsonValueAsync<string>())?.Trim() ?? "";
-
-                                // Our business logic: Main file (i=1) or Exhibits (Ex-)
-                                if (i > 2 && !type.StartsWith("EX-", StringComparison.OrdinalIgnoreCase)) break;
-
-                                var dto = new FilingExhibit { Type = type };
-
-                                var descHandle = await cols[1].GetPropertyAsync("textContent");
-                                dto.Description = (await descHandle.JsonValueAsync<string>())?.Trim();
-
-                                var anchorTag = await cols[2].QuerySelectorAsync("a");
-                                if (anchorTag != null)
-                                {
-                                    var titleHandle = await anchorTag.GetPropertyAsync("textContent");
-                                    dto.Title = (await titleHandle.JsonValueAsync<string>())?.Trim();
-
-                                    var hrefHandle = await anchorTag.GetPropertyAsync("href");
-                                    var aUrl = await hrefHandle.JsonValueAsync<string>();
-
-                                    dto.Url = aUrl.Replace(@"/ix?doc=", "");
-                                    dto.DisplayUrl = dto.Url;
-                                }
-
-                                var sizeHandle = await cols[4].GetPropertyAsync("textContent");
-                                string sizeInText = (await sizeHandle.JsonValueAsync<string>())?.Trim() ?? "";
-                                if (int.TryParse(sizeInText, out int sizeValue))
-                                {
-                                    dto.Size = sizeValue;
-                                }
-
-                                filesList.Add(dto);
+                                dto.Url = aUrl.Replace(@"/ix?doc=", "");
+                                dto.DisplayUrl = dto.Url;
                             }
-                            resultList.Add(filesList);
+
+                            var sizeHandle = await cols[4].GetPropertyAsync("textContent");
+                            string sizeInText = (await sizeHandle.JsonValueAsync<string>())?.Trim() ?? "";
+                            if (int.TryParse(sizeInText, out int sizeValue))
+                            {
+                                dto.Size = sizeValue;
+                            }
+
+                            filesList.Add(dto);
                         }
-                        catch (Exception ex)
-                        {
-                            var title = await page.GetTitleAsync();
-                            _logger.LogWarning("Failed URL: {Url}. SEC Page Title: {Title}", pageUrl, title);
-                            // Crucial: Add an empty list or null to keep the ResultList count aligned with NewFilingCount
-                            resultList.Add(null);
-                        }
+                        resultList.Add(filesList);
+                    }
+                    catch (Exception ex)
+                    {
+                        var title = await page.GetTitleAsync();
+                        _logger.LogWarning("Failed URL: {Url}. SEC Page Title: {Title}", pageUrl, title);
+                        // Crucial: Add an empty list or null to keep the ResultList count aligned with NewFilingCount
+                        resultList.Add(null);
                     }
                 }
             }
