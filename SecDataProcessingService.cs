@@ -128,6 +128,7 @@ namespace sec_scraper
                             using (var browser = await Puppeteer.LaunchAsync(launchOptions))
                             {
                                 int newFilingCount = filingCountSEC - filingCountDB;
+                                Console.WriteLine($"XXX --- count: {newFilingCount}, sec #: {filingCountSEC}, DB: {filingCountDB}");
                                 var filingExhibitsList = await GetFilingExhibitData(tenant.Cik, fetchedSecData, newFilingCount, browser);
                                 var ids = await InsertNewFilingsToDB(fetchedSecData!, filingExhibitsList, newFilingCount, tenant.Cik, filingRepo);
                                 await CreateFilingPdfDocs(tenant.Cik, filingExhibitsList, fetchedSecData, browser);
