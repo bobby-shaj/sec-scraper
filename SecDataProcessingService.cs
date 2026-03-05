@@ -273,7 +273,7 @@ namespace sec_scraper
             {
                 // SEC Rule: Max 10 requests per second. Adding a small delay 
                 // helps keep the Azure IP from being "gray-listed"
-                await Task.Delay(2000);
+                await Task.Delay(500);
 
                 using (var page = await browser.NewPageAsync())
                 {
