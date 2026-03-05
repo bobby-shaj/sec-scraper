@@ -52,7 +52,7 @@ namespace sec_scraper
             {
                 Console.WriteLine($"Verifying storage container: {_containerClient.Name}......");
                 await _containerClient.CreateIfNotExistsAsync();
-                Console.WriteLine("Storage container verified/created.");
+                Console.WriteLine("Storage container verified/created!!");
             }
             catch (Exception ex)
             {

@@ -7,13 +7,11 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using PuppeteerSharp.Cdp;
 using sec_scraper;
 
 
 // 1. Setup the Host (but don't use RunAsync yet)
 var builder = Host.CreateApplicationBuilder(args);
-
 
 Console.WriteLine("--- Starting Scraper Health Check ---");
 
@@ -30,7 +28,7 @@ else
 }
 
 // Check Database Connection
-string connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__FocusDBConnection")
+string connectionString = builder.Configuration.GetConnectionString("FocusDBConnection")
     ?? throw new InvalidOperationException("Critical: FocusDBConnection is not found in configuration.");
 
 
