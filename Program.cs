@@ -17,7 +17,7 @@ var builder = Host.CreateApplicationBuilder(args);
 
 Console.WriteLine("--- Starting Scraper Health Check ---");
 
-// Check Chrome Path
+// Check Chrome Path.
 string chromePath = Environment.GetEnvironmentVariable("CHROME_PATH") ?? "/usr/bin/chromium";
 Console.WriteLine($"Checking Chromium at {chromePath}");
 if (File.Exists(chromePath))
