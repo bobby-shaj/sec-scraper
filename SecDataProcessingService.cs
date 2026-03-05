@@ -50,7 +50,7 @@ namespace sec_scraper
             // Perform the "Ensure Created" check once
             try
             {
-                Console.WriteLine($"Verifying storage container: {_containerClient.Name}...");
+                Console.WriteLine($"Verifying storage container: {_containerClient.Name}......");
                 await _containerClient.CreateIfNotExistsAsync();
                 Console.WriteLine("Storage container verified/created.");
             }
