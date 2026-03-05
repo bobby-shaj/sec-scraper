@@ -4,6 +4,7 @@ using Azure.Storage.Blobs.Models;
 using FocusDB.Repositories.Interfaces;
 using FocusLib.Models.DB;
 using FocusLib.Models.SEC;
+using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PdfSharpCore.Pdf;
@@ -59,6 +60,29 @@ namespace sec_scraper
                 // If this fails, we catch it early before the scraper starts wasting SEC requests
                 Console.WriteLine($"STORAGE INITIALIZATION ERROR: {ex.Message}");
                 throw;
+            }
+
+            string _connectionString = "Server=tcp:focus-portal-server.database.windows.net,1433;Initial Catalog=Perfecular_MultiTenant;Persist Security Info=False;User ID=foc-admin;Password=Ffuvboss__2025;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;ApplicationIntent=ReadWrite";
+            using (var conn = new SqlConnection(_connectionString))
+            {
+                await conn.OpenAsync();
+                using var cmd = new SqlCommand(@"
+                    SELECT 
+                    USER_NAME() as CurrentUser, 
+                    SCHEMA_NAME() as DefaultSchema, 
+                    DATABASEPROPERTYEX(DB_NAME(), 'Updateability') as ReplicaStatus,
+                    (SELECT COUNT(*) FROM dbo.Filings) as DboCount", conn);
+
+                using var reader = await cmd.ExecuteReaderAsync();
+                while (reader.Read())
+                {
+                    Console.WriteLine($"--- AZURE DATABASE DIAGNOSTICS ---");
+                    Console.WriteLine($"Logged in as: {reader["CurrentUser"]}");
+                    Console.WriteLine($"Default Schema: {reader["DefaultSchema"]}");
+                    Console.WriteLine($"Replica Status: {reader["ReplicaStatus"]}"); // If 'READ_ONLY', you're on a laggy replica
+                    Console.WriteLine($"Actual dbo.Filings Count: {reader["DboCount"]}");
+                    Console.WriteLine($"----------------------------------");
+                }
             }
 
             // 1. Get the list of all tenants.
