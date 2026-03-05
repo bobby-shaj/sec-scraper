@@ -10,6 +10,7 @@ using PdfSharpCore.Pdf;
 using PdfSharpCore.Pdf.IO;
 using PuppeteerSharp;
 using PuppeteerSharp.Media;
+using System;
 using System.Runtime.Serialization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -46,6 +47,19 @@ namespace sec_scraper
         {
             _logger.LogInformation("Job executed at: {time}", DateTimeOffset.Now);
 
+            // Perform the "Ensure Created" check once
+            try
+            {
+                Console.WriteLine($"Verifying storage container: {_containerClient.Name}...");
+                await _containerClient.CreateIfNotExistsAsync();
+                Console.WriteLine("Storage container verified/created.");
+            }
+            catch (Exception ex)
+            {
+                // If this fails, we catch it early before the scraper starts wasting SEC requests
+                Console.WriteLine($"STORAGE INITIALIZATION ERROR: {ex.Message}");
+                throw;
+            }
 
             // 1. Get the list of all tenants.
             // We use a temporary scope here to fetch the "Master List"
