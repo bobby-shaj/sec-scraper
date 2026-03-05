@@ -83,7 +83,7 @@ if (azureOptions != null)
         builder.Services.AddSingleton(x =>
         {
             var serviceClient = x.GetRequiredService<BlobServiceClient>();
-            return serviceClient.GetBlobContainerClient("filing-documents");
+            return serviceClient.GetBlobContainerClient(azureOptions.ContainerName);
         });
     }
     else
@@ -106,7 +106,7 @@ if (azureOptions != null)
         builder.Services.AddSingleton(x =>
         {
             var serviceClient = x.GetRequiredService<BlobServiceClient>();
-            return serviceClient.GetBlobContainerClient("filing-documents");
+            return serviceClient.GetBlobContainerClient(azureOptions.ContainerName);
         });
     }
 }
