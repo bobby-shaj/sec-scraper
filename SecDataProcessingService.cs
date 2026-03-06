@@ -1,12 +1,11 @@
-﻿using Azure;
-using Azure.Storage.Blobs;
+﻿using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using FocusDB.Repositories.Interfaces;
 using FocusLib.Models.DB;
 using FocusLib.Models.SEC;
-using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using PdfSharpCore;
 using PdfSharpCore.Pdf;
 using PdfSharpCore.Pdf.IO;
 using PuppeteerSharp;
@@ -186,46 +185,49 @@ namespace sec_scraper
         {
             for (int i = 0; i < filingExhibitsList.Count; i++)
             {
-                if (filingExhibitsList.ElementAt(i) == null) continue;
-                using (var page = await browser.NewPageAsync())
+                var currentFilingExhibits = filingExhibitsList.ElementAtOrDefault(i);
+                if (currentFilingExhibits == null) continue;
+
+                var accessionNum = secFilingData.AccessionNumber?[i];
+
+                try
                 {
-                    List<string> pdfDocuments = new List<string>();
-
-                    await page.EvaluateExpressionOnNewDocumentAsync(@"
-                            () => {
-                                Object.defineProperty(navigator, 'webdriver', { get: () => false });
-                            }
-                        ");
-                    await page.SetUserAgentAsync(userAgentInfo["User-Agent"]);
-
-                    var accessionNum = secFilingData.AccessionNumber?[i];
-                    List<byte[]> pdfArrayList = new List<byte[]>();
-
-                    foreach (FilingExhibit? document in filingExhibitsList.ElementAt(i)!)
+                    // We use one page per Filing to save memory overhead
+                    using (var page = await browser.NewPageAsync())
                     {
-                        await page.GoToAsync(document?.Url, new NavigationOptions
-                        {
-                            WaitUntil = new[] { WaitUntilNavigation.Networkidle2 },
-                            Timeout = 60000
-                        });
-                        byte[] pdfData = await page.PdfDataAsync(new PdfOptions
-                        {
-                            Format = PaperFormat.A4,
-                            PrintBackground = true,
-                        });
-                        pdfArrayList.Add(pdfData);
-                    }
+                        // Stealth & Identity
+                        await page.EvaluateExpressionOnNewDocumentAsync("() => { Object.defineProperty(navigator, 'webdriver', { get: () => false }); }");
+                        await page.SetUserAgentAsync(userAgentInfo["User-Agent"]);
 
-                    // 1. Prepare the memory stream for the final merged PDF
-                    using (var resultMs = new MemoryStream())
-                    {
-                        using (var resultPDF = new PdfDocument())
+                        List<byte[]> pdfArrayList = new List<byte[]>();
+
+                        foreach (FilingExhibit? document in currentFilingExhibits)
                         {
-                            foreach (var pdf in pdfArrayList)
+                            if (string.IsNullOrEmpty(document?.Url)) continue;
+
+                            // --- Optimization: SEC Rate Limit Delay ---
+                            await Task.Delay(500);
+
+                            // --- Optimization: Robust Navigation with Retry ---
+                            byte[]? pdfData = await NavigateAndCapturePdf(page, document.Url);
+
+                            if (pdfData != null)
                             {
-                                using (var src = new MemoryStream(pdf))
+                                pdfArrayList.Add(pdfData);
+                            }
+                        }
+
+                        if (pdfArrayList.Count == 0) continue;
+
+                        // --- PDF Merging Logic ---
+                        using (var resultMs = new MemoryStream())
+                        {
+                            using (var resultPDF = new PdfSharpCore.Pdf.PdfDocument())
+                            {
+                                foreach (var pdfBytes in pdfArrayList)
                                 {
-                                    using (var srcPDF = PdfReader.Open(src, PdfDocumentOpenMode.Import))
+                                    using (var src = new MemoryStream(pdfBytes))
+                                    using (var srcPDF = PdfSharpCore.Pdf.IO.PdfReader.Open(src, PdfSharpCore.Pdf.IO.PdfDocumentOpenMode.Import))
                                     {
                                         for (int j = 0; j < srcPDF.PageCount; j++)
                                         {
@@ -233,33 +235,66 @@ namespace sec_scraper
                                         }
                                     }
                                 }
+                                resultPDF.Save(resultMs);
                             }
 
-                            // 2. Save the PDF content into our result memory stream
-                            resultPDF.Save(resultMs);
+                            resultMs.Position = 0;
+
+                            // --- Azure Storage Upload ---
+                            string blobName = $"{cik}/{accessionNum}/file.pdf";
+                            var blobClient = _containerClient.GetBlobClient(blobName);
+
+                            await blobClient.UploadAsync(resultMs, new BlobUploadOptions
+                            {
+                                HttpHeaders = new BlobHttpHeaders { ContentType = "application/pdf" }
+                            });
+
+                            _logger.LogInformation("✅ Successfully uploaded merged PDF: {BlobName}", blobName);
                         }
-
-                        // 3. CRITICAL: Reset the stream position to the begining before uploading
-                        resultMs.Position = 0;
-
-                        // 4. Define the Azure Path (Virtual Directory structure)
-                        // Note: No Directory.Exists check needed
-                        string blobName = $"{cik}/{accessionNum}/file.pdf";
-                        var blobClient = _containerClient.GetBlobClient(blobName);
-
-                        // 5. Upload to Azure
-                        await blobClient.UploadAsync(resultMs, new BlobUploadOptions
-                        {
-                            HttpHeaders = new BlobHttpHeaders { ContentType = "application/pdf"}
-                        });
-
-                        _logger.LogInformation("Merged PDF uploaded to: {BlobName}", blobName);
                     }
-                        
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "❌ Critical failure processing Accession: {Accession}", accessionNum);
+                    // We continue so one bad filing doesn't stop the whole job
+                    continue;
                 }
             }
         }
-            
+
+        private async Task<byte[]?> NavigateAndCapturePdf(IPage page, string url, int maxRetries = 3)
+        {
+            int attempt = 0;
+            while (attempt < maxRetries)
+            {
+                try
+                {
+                    attempt++;
+
+                    // Optimization: DOMContentLoaded is faster/more reliable for SEC HTML
+                    await page.GoToAsync(url, new NavigationOptions
+                    {
+                        WaitUntil = new[] { WaitUntilNavigation.DOMContentLoaded },
+                        Timeout = 60000
+                    });
+
+                    // Capture PDF
+                    return await page.PdfDataAsync(new PdfOptions
+                    {
+                        Format = PaperFormat.A4,
+                        PrintBackground = true,
+                    });
+                }
+                catch (Exception ex) when (attempt < maxRetries)
+                {
+                    int delay = attempt * 2000; // Exponential backoff: 2s, 4s...
+                    _logger.LogWarning("⚠️ Timeout/Error at {Url}. Retry {Attempt}/{Max}. Waiting {Delay}ms...", url, attempt, maxRetries, delay);
+                    await Task.Delay(delay);
+                }
+            }
+            return null; // Return null if all retries fail
+        }
+
 
         /// <summary>       
         /// 
@@ -318,29 +353,6 @@ namespace sec_scraper
 
 
                         var tableSelector = "table[summary='Document Format Files'], table.tableFile";
-
-                        // Ensure the table actually exists
-                        //try
-                        //{
-                        //    await page.WaitForSelectorAsync(tableSelector, new WaitForSelectorOptions { Timeout = 10000 });
-                        //}
-                        //catch (WaitTaskTimeoutException)
-                        //{
-                        //    // DIAGNOSTIC: If the table isn't found, log WHAT we are seeing instead.
-                        //    var title = await page.GetTitleAsync();
-                        //    var body = await page.GetContentAsync();
-                        //    var snippet = body.Length > 300 ? body.Substring(0, 300) : body;
-
-                        //    _logger.LogError("SEC Blocked/Different Layout at {Url}. Title: {Title}. Snippet: {Snippet}", pageUrl, title, snippet);
-
-                        //    // Stop the entire run if we are clearly blocked
-                        //    if (title.Contains("Request Rate") || title.Contains("Access Denied"))
-                        //    {
-                        //        throw new Exception("Scraper blocked by SEC Rate Limiting.");
-                        //    }
-
-                        //    throw; // Continue to the outer catch
-                        //}
 
                         var title = await page.GetTitleAsync();
                         Console.WriteLine($"DEBUG: Response Status: {response?.Status}");
