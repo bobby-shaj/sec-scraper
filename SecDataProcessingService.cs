@@ -5,12 +5,8 @@ using FocusLib.Models.DB;
 using FocusLib.Models.SEC;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
-using PdfSharpCore;
-using PdfSharpCore.Pdf;
-using PdfSharpCore.Pdf.IO;
 using PuppeteerSharp;
 using PuppeteerSharp.Media;
-using System;
 using System.Runtime.Serialization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -61,29 +57,6 @@ namespace sec_scraper
                 throw;
             }
 
-            //string _connectionString = "Server=tcp:focus-portal-server.database.windows.net,1433;Initial Catalog=Perfecular_MultiTenant;Persist Security Info=False;User ID=foc-admin;Password=Ffuvboss__2025;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;ApplicationIntent=ReadWrite";
-            //using (var conn = new SqlConnection(_connectionString))
-            //{
-            //    await conn.OpenAsync();
-            //    using var cmd = new SqlCommand(@"
-            //        SELECT 
-            //        USER_NAME() as CurrentUser, 
-            //        SCHEMA_NAME() as DefaultSchema, 
-            //        DATABASEPROPERTYEX(DB_NAME(), 'Updateability') as ReplicaStatus,
-            //        (SELECT COUNT(*) FROM dbo.Filings) as DboCount", conn);
-
-            //    using var reader = await cmd.ExecuteReaderAsync();
-            //    while (reader.Read())
-            //    {
-            //        Console.WriteLine($"--- AZURE DATABASE DIAGNOSTICS ---");
-            //        Console.WriteLine($"Logged in as: {reader["CurrentUser"]}");
-            //        Console.WriteLine($"Default Schema: {reader["DefaultSchema"]}");
-            //        Console.WriteLine($"Replica Status: {reader["ReplicaStatus"]}"); // If 'READ_ONLY', you're on a laggy replica
-            //        Console.WriteLine($"Actual dbo.Filings Count: {reader["DboCount"]}");
-            //        Console.WriteLine($"----------------------------------");
-            //    }
-            //}
-
             // 1. Get the list of all tenants.
             // We use a temporary scope here to fetch the "Master List"
             // while the ConnectionFactory has NO TenantId set.
@@ -119,8 +92,6 @@ namespace sec_scraper
 
 
                         // 5. Run sequential tasks
-                        //var cik = "0001590418";
-                        //var cikNoLeadingZeros = GetNoLeadingZeroCIK(tenant.Cik);
 
                         // Fetch latest filing data from SEC API
                         var fetchedSecData = await GetSecFilingData(tenant.Cik);
@@ -128,8 +99,11 @@ namespace sec_scraper
 
                         // Fetch filing count for company from Database
                         int filingCountDB = await filingRepo.GetFilingCount(tenant.Cik);
+                        var delta = filingCountSEC - filingCountDB;
 
-                        if (filingCountSEC > filingCountDB)
+                        delta = tenant.Cik.Equals("0001590418") ? delta = 0 : delta = 10; 
+
+                        if (delta > 0)
                         {
                             _logger.LogInformation("Babak, in conditional!!");
 
@@ -150,13 +124,12 @@ namespace sec_scraper
 
                             using (var browser = await Puppeteer.LaunchAsync(launchOptions))
                             {
-                                int newFilingCount = filingCountSEC - filingCountDB;
-                                Console.WriteLine($"XXX --- count: {newFilingCount}, sec #: {filingCountSEC}, DB: {filingCountDB}");
-                                var filingExhibitsList = await GetFilingExhibitData(tenant.Cik, fetchedSecData, newFilingCount, browser);
-                                var ids = await InsertNewFilingsToDB(fetchedSecData!, filingExhibitsList, newFilingCount, tenant.Cik, filingRepo);
+                                Console.WriteLine($"XXX --- count: {delta}, sec #: {filingCountSEC}, DB: {filingCountDB}");
+                                var filingExhibitsList = await GetFilingExhibitData(tenant.Cik, fetchedSecData, delta, browser);
+                                var ids = await InsertNewFilingsToDB(fetchedSecData!, filingExhibitsList, delta, tenant.Cik, filingRepo);
                                 await CreateFilingPdfDocs(tenant.Cik, filingExhibitsList, fetchedSecData, browser);
                                 await InsertFilingExhibitsToDB(ids, filingExhibitsList!, filingRepo);
-                                await DownloadFiles(tenant.Cik, fetchedSecData, newFilingCount);
+                                await DownloadFiles(tenant.Cik, fetchedSecData, delta);
                                 Console.WriteLine("Done!");
                             }
                         }
@@ -333,7 +306,7 @@ namespace sec_scraper
             {
                 // SEC Rule: Max 10 requests per second. Adding a small delay 
                 // helps keep the Azure IP from being "gray-listed"
-                await Task.Delay(500);
+                await Task.Delay(2000);
 
                 using (var page = await browser.NewPageAsync())
                 {
@@ -464,14 +437,15 @@ namespace sec_scraper
                 throw new Exception();
             }
 
-            string userAgent = @"babak@focusuniversal.com";
+
             var uri = _secApiUrl + $"{cik}.json";
+            var request = new HttpRequestMessage(HttpMethod.Get, uri);
+            request.Headers.Add("User-Agent", userAgentInfo["User-Agent"]);
             string jsonContent = "";
-            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", userAgent);
 
             try
             {
-                using (var response = await _httpClient.GetAsync(uri))
+                using (var response = await _httpClient.SendAsync(request))
                 {
                     response.EnsureSuccessStatusCode();
                     jsonContent = await response.Content.ReadAsStringAsync();
@@ -504,8 +478,6 @@ namespace sec_scraper
 
         private async Task DownloadFiles(string cik, SecFilingData secFilingData, int newFilingCount)
         {
-            _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", @"FocusUniversal babak@focusuniversal.com");
-
             for (int i = 0; i < newFilingCount; i++)
             {
                 if (secFilingData.IsXBRL?[i] == 0) continue;
@@ -523,6 +495,7 @@ namespace sec_scraper
 
                     // Use SendAsync instead of GetStreamAsync to prevent exception on 404
                     using var request = new HttpRequestMessage(HttpMethod.Get, xlsxfileURL);
+                    request.Headers.Add("User-Agent", userAgentInfo["User-Agent"]);
                     using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
 
                     if (response.IsSuccessStatusCode)
@@ -597,16 +570,6 @@ namespace sec_scraper
                     _logger.LogError(ex, "Critical failure attempting to reach SEC for XBRL ZIP file.");
                 }
             }
-        }
-
-        private string GetNoLeadingZeroCIK(string cik)
-        {
-            int ci = 0;
-            while (ci < cik.Length && cik[ci] == '0')
-            {
-                ci++;
-            }
-            return cik.Substring(ci);
         }
     }
 }
