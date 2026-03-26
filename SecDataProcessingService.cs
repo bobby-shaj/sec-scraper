@@ -439,8 +439,9 @@ namespace sec_scraper
 
 
             var uri = _secApiUrl + $"{cik}.json";
-            var request = new HttpRequestMessage(HttpMethod.Get, uri);
-            request.Headers.Add("User-Agent", userAgentInfo["User-Agent"]);
+            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+            request.Headers.TryAddWithoutValidation("User-Agent", userAgentInfo["User-Agent"]);
+            //request.Headers.Add("User-Agent", userAgentInfo["User-Agent"]);
             string jsonContent = "";
 
             try
@@ -495,7 +496,7 @@ namespace sec_scraper
 
                     // Use SendAsync instead of GetStreamAsync to prevent exception on 404
                     using var request = new HttpRequestMessage(HttpMethod.Get, xlsxfileURL);
-                    request.Headers.Add("User-Agent", userAgentInfo["User-Agent"]);
+                    request.Headers.TryAddWithoutValidation("User-Agent", userAgentInfo["User-Agent"]);
                     using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
 
                     if (response.IsSuccessStatusCode)
@@ -538,6 +539,7 @@ namespace sec_scraper
                 {
 
                     using var request = new HttpRequestMessage(HttpMethod.Get, xbrlfileURL);
+                    request.Headers.TryAddWithoutValidation("User-Agent", userAgentInfo["User-Agent"]);
                     using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
 
                     if (response.IsSuccessStatusCode)

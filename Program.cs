@@ -7,7 +7,11 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Http.Resilience;
+using Polly;
+using System.Threading.RateLimiting;
 using sec_scraper;
+
 
 
 // 1. Setup the Host (but don't use RunAsync yet)
@@ -109,8 +113,29 @@ if (azureOptions != null)
     }
 }
 
-// 2. Register your existing services 
-builder.Services.AddHttpClient();
+// 2. Register your existing services
+builder.Services.AddHttpClient<SecDataProcessingService>(client => 
+{
+    client.DefaultRequestHeaders.Add("User-Agent", "FocusUniversal (babak@focusuniversal.com)");
+})
+.AddResilienceHandler("sec-api-policy", pipeline =>
+{
+    // This 'pipeline' is the one that needs the configuration
+    pipeline.AddRateLimiter(new FixedWindowRateLimiter(new FixedWindowRateLimiterOptions
+    {
+        PermitLimit = 10,
+        Window = TimeSpan.FromSeconds(1),
+        QueueLimit = 100,
+    }));
+
+    pipeline.AddRetry(new HttpRetryStrategyOptions
+    {
+        MaxRetryAttempts = 3,
+        BackoffType = DelayBackoffType.Exponential,
+        UseJitter = true
+    });
+});
+
 builder.Services.AddScoped<IDbConnectionFactory, ScraperConnectionFactory>();
 builder.Services.AddScoped<ITenantRepository, TenantRepository>();
 builder.Services.AddScoped<IFilingRepository, FilingRepository>();
