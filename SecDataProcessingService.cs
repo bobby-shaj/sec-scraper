@@ -101,7 +101,7 @@ namespace sec_scraper
                         int filingCountDB = await filingRepo.GetFilingCount(tenant.Cik);
                         var delta = filingCountSEC - filingCountDB;
 
-                        delta = tenant.Cik.Equals("0001590418") ? delta = 0 : delta = 10; 
+                        delta = tenant.Cik.Equals("0001590418") ? delta = 45 : delta = 10; 
 
                         if (delta > 0)
                         {
@@ -408,7 +408,7 @@ namespace sec_scraper
                     IsXBRL = fetchedSecData?.IsXBRL?[i],
                     IsInlineXBRL = fetchedSecData?.IsXBRL?[i],
                     PrimaryDocument = fetchedSecData?.PrimaryDocument?[i],
-                    PrimaryDocDesc = fetchedSecData?.PrimaryDocDescription?[i],
+                    PrimaryDocDesc = fetchedSecData?.PrimaryDocDesc?[i],
                     PrimaryDocURL = filingExhibitsList[i]?[0]?.Url,
                     CIK = cik
                 };
