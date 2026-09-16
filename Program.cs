@@ -32,8 +32,8 @@ else
 }
 
 // Check Database Connection
-string connectionString = builder.Configuration.GetConnectionString("DBConnection")
-    ?? throw new InvalidOperationException("Critical: DBConnection is not found in configuration.");
+string connectionString = builder.Configuration.GetConnectionString("FocusDBConnection")
+    ?? throw new InvalidOperationException("Critical: FocusDBConnection is not found in configuration.");
 
 
 Console.WriteLine("Testing Database Connectivity...");
@@ -100,10 +100,10 @@ if (azureOptions != null)
             // If we are here, we MUST have an account name to build the URI
             throw new InvalidOperationException("AzureStorage:AccountName must be provided when using Managed Identity.");
         }
-        
+
         var storageUri = new Uri($"https://{accountName}.blob.core.windows.net");
 
-        builder.Services.AddSingleton(x => 
+        builder.Services.AddSingleton(x =>
             new BlobServiceClient(storageUri, new DefaultAzureCredential(), clientOptions));
         builder.Services.AddSingleton(x =>
         {
@@ -114,7 +114,7 @@ if (azureOptions != null)
 }
 
 // 2. Register your existing services
-builder.Services.AddHttpClient<SecDataProcessingService>(client => 
+builder.Services.AddHttpClient<SecDataProcessingService>(client =>
 {
     client.DefaultRequestHeaders.Add("User-Agent", "FocusUniversal (babak@focusuniversal.com)");
 })

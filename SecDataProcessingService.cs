@@ -3,6 +3,7 @@ using Azure.Storage.Blobs.Models;
 using FocusDB.Repositories.Interfaces;
 using FocusLib.Models.DB;
 using FocusLib.Models.SEC;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PuppeteerSharp;
@@ -21,22 +22,32 @@ namespace sec_scraper
 
         private readonly IServiceScopeFactory _serviceScopeFactory;
         private readonly BlobContainerClient _containerClient;
+        private readonly IDbConnectionFactory _dbConnectionFactory;
+        private readonly IFilingRepository _filingRepository;
 
         private readonly Dictionary<string, string> userAgentInfo = new Dictionary<string, string>()
         {
             ["User-Agent"] = "FocusUniversal (babak@focusuniversal.com)"
         };
-
+        private readonly string _cik = string.Empty;
+        private readonly string _companyName = string.Empty;
 
         public SecDataProcessingService(HttpClient httpClient,
                                         ILogger<SecDataProcessingService> logger,
                                         BlobContainerClient containerClient,
+                                        IDbConnectionFactory dbConnectionFactory,
+                                        IFilingRepository filingRepository,
+                                        IConfiguration configuration,
                                         IServiceScopeFactory serviceScopeFactory)
         {
             _httpClient = httpClient;
             _logger = logger;
             _containerClient = containerClient;
             _serviceScopeFactory = serviceScopeFactory;
+            _dbConnectionFactory = dbConnectionFactory;
+            _filingRepository = filingRepository;
+            _cik = configuration["CompanySettings:cik"] ?? string.Empty;
+            _companyName = configuration["CompanySettings:CompanyName"] ?? string.Empty;
         }
 
         public async Task Execute()
@@ -57,90 +68,57 @@ namespace sec_scraper
                 throw;
             }
 
-            // 1. Get the list of all tenants.
-            // We use a temporary scope here to fetch the "Master List"
-            // while the ConnectionFactory has NO TenantId set.
-            List<TenantLookupDto> tenants;
-            using (var globalScope = _serviceScopeFactory.CreateScope())
-            {
-                var tenantRepo = globalScope.ServiceProvider.GetRequiredService<ITenantRepository>();
-                tenants = (await tenantRepo.GetAllActiveTenantsAsync()).ToList();
-            }
 
-            _logger.LogInformation($"Found {tenants.Count} tenants to process.");
-
-            // 2. Iterate through each tenant
-            foreach (var tenant in tenants)
+            try
             {
-                // CRITICAL: Create a NEW scope for this specific tenant
-                using (var tenantScope = _serviceScopeFactory.CreateScope())
+                var connection = _dbConnectionFactory.CreateConnectionAsync();
+
+                // Fetch latest filing data from SEC API
+                var fetchedSecData = await GetSecFilingData(_cik);
+                int filingCountSEC = (int)fetchedSecData?.AccessionNumber?.Count!;
+
+                // Fetch filing count for company from Database
+                int filingCountDB = await _filingRepository.GetFilingCount(_cik);
+                var delta = filingCountSEC - filingCountDB;
+
+                delta = _cik.Equals("0001590418") ? delta = 45 : delta = 10;
+
+                if (delta > 0)
                 {
-                    try
+                    _logger.LogInformation("Babak, in conditional!!");
+
+                    var browserFetcher = new BrowserFetcher();
+                    var revisionInfo = await browserFetcher.DownloadAsync();
+
+                    var launchOptions = new LaunchOptions
                     {
-                        // 3. Resolve the factory and SET the Identity
-                        var factory = (ScraperConnectionFactory)tenantScope.ServiceProvider
-                            .GetRequiredService<IDbConnectionFactory>();
-                            
-                        factory.CurrentTenantId = tenant.TenantId;
-
-                        // 4. Resolve the Repositories
-                        // Because they are Scoped, they will share the SAME factory instance
-                        // we just updated above.
-                        var filingRepo = tenantScope.ServiceProvider.GetRequiredService<IFilingRepository>();
-
-                        _logger.LogInformation("Processing filings for: {TenantName} (CIK: {CIK}", tenant.DisplayName, tenant.Cik);
-
-
-                        // 5. Run sequential tasks
-
-                        // Fetch latest filing data from SEC API
-                        var fetchedSecData = await GetSecFilingData(tenant.Cik);
-                        int filingCountSEC = (int)fetchedSecData?.AccessionNumber?.Count!;
-
-                        // Fetch filing count for company from Database
-                        int filingCountDB = await filingRepo.GetFilingCount(tenant.Cik);
-                        var delta = filingCountSEC - filingCountDB;
-
-                        delta = tenant.Cik.Equals("0001590418") ? delta = 45 : delta = 10; 
-
-                        if (delta > 0)
+                        ExecutablePath = revisionInfo.GetExecutablePath(),
+                        Headless = true,
+                        Args = new[]
                         {
-                            _logger.LogInformation("Babak, in conditional!!");
-
-                            var browserFetcher = new BrowserFetcher();
-                            var revisionInfo = await browserFetcher.DownloadAsync();
-
-                            var launchOptions = new LaunchOptions
-                            {
-                                ExecutablePath = revisionInfo.GetExecutablePath(),
-                                Headless = true,
-                                Args = new[]
-                                {
-                                    "--no-sandbox", 
-                                    "--disable-setuid-sandbox", 
+                                    "--no-sandbox",
+                                    "--disable-setuid-sandbox",
                                     "--disable-dev-shm-usage"
                                 }
-                            };
+                    };
 
-                            using (var browser = await Puppeteer.LaunchAsync(launchOptions))
-                            {
-                                Console.WriteLine($"XXX --- count: {delta}, sec #: {filingCountSEC}, DB: {filingCountDB}");
-                                var filingExhibitsList = await GetFilingExhibitData(tenant.Cik, fetchedSecData, delta, browser);
-                                var ids = await InsertNewFilingsToDB(fetchedSecData!, filingExhibitsList, delta, tenant.Cik, filingRepo);
-                                await CreateFilingPdfDocs(tenant.Cik, filingExhibitsList, fetchedSecData, browser);
-                                await InsertFilingExhibitsToDB(ids, filingExhibitsList!, filingRepo);
-                                await DownloadFiles(tenant.Cik, fetchedSecData, delta);
-                                Console.WriteLine("Done!");
-                            }
-                        }
-                    }
-                    catch (Exception ex)
+                    using (var browser = await Puppeteer.LaunchAsync(launchOptions))
                     {
-                        // Catching here ensures one bad tenant doesn't stop the whole day's run
-                        _logger.LogError(ex, "Error processing tenant {TenantName}", tenant.DisplayName);
+                        Console.WriteLine($"XXX --- count: {delta}, sec #: {filingCountSEC}, DB: {filingCountDB}");
+                        var filingExhibitsList = await GetFilingExhibitData(_cik, fetchedSecData, delta, browser);
+                        var ids = await InsertNewFilingsToDB(fetchedSecData!, filingExhibitsList, delta, _cik, _filingRepository);
+                        await CreateFilingPdfDocs(_cik, filingExhibitsList, fetchedSecData, browser);
+                        await InsertFilingExhibitsToDB(ids, filingExhibitsList!, _filingRepository);
+                        await DownloadFiles(_cik, fetchedSecData, delta);
+                        Console.WriteLine("Done!");
                     }
-                }  // Scope ends here: Connection is closed, and TenantId is wiped from memory
-            }   
+                }
+            }
+            catch (Exception ex)
+            {
+                // Catching here ensures one bad tenant doesn't stop the whole day's run
+                _logger.LogError(ex, "Error processing tenant {TenantName}", _companyName);
+            }
         }
 
         /// <summary>
@@ -389,19 +367,19 @@ namespace sec_scraper
             return resultList!;
         }
 
-        private async Task<List<int>> InsertNewFilingsToDB(SecFilingData fetchedSecData, 
-                                                           List<List<FilingExhibit?>?> filingExhibitsList, 
+        private async Task<List<int>> InsertNewFilingsToDB(SecFilingData fetchedSecData,
+                                                           List<List<FilingExhibit?>?> filingExhibitsList,
                                                            int rowsToAddCount,
                                                            string cik,
                                                            IFilingRepository filingRepository)
-            {
+        {
             // Extract/create Filing class for each new SEC filing
             var newFilingsList = new List<Filing>();
             for (int i = 0; i < rowsToAddCount; i++)
             {
                 Filing newFiling = new Filing()
                 {
-                    AccessionNum = fetchedSecData?.AccessionNumber?[i], 
+                    AccessionNum = fetchedSecData?.AccessionNumber?[i],
                     FilingDate = fetchedSecData?.FilingDate?[i],
                     FilingType = fetchedSecData?.Form?[i],
                     Size = fetchedSecData?.Size?[i],
@@ -530,7 +508,7 @@ namespace sec_scraper
                 {
                     _logger.LogError(ex, "Critical failure attempting to reach SEC for Financial_Report.xlsx download.");
                 }
-                    
+
                 var xbrlfileURL = $"https://www.sec.gov/Archives/edgar/data/{cik}/{accessionNumNoDashes}/{accessionNum}-xbrl.zip";
                 string blobNameZip = $"{cik}/{accessionNum}/{accessionNum}-xbrl.zip";
                 var blobClientZip = _containerClient.GetBlobClient(blobNameZip);
