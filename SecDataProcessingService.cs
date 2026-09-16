@@ -85,8 +85,6 @@ namespace sec_scraper
 
                 if (delta > 0)
                 {
-                    _logger.LogInformation("Babak, in conditional!!");
-
                     var browserFetcher = new BrowserFetcher();
                     var revisionInfo = await browserFetcher.DownloadAsync();
 
@@ -117,7 +115,7 @@ namespace sec_scraper
             catch (Exception ex)
             {
                 // Catching here ensures one bad tenant doesn't stop the whole day's run
-                _logger.LogError(ex, "Error processing tenant {TenantName}", _companyName);
+                _logger.LogError(ex, "Error processing company data {_companyName}", _companyName);
             }
         }
 
