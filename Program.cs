@@ -32,8 +32,8 @@ else
 }
 
 // Check Database Connection
-string connectionString = builder.Configuration.GetConnectionString("FocusDBConnection")
-    ?? throw new InvalidOperationException("Critical: FocusDBConnection is not found in configuration.");
+string connectionString = builder.Configuration.GetConnectionString("DBConnection")
+    ?? throw new InvalidOperationException("Critical: DBConnection is not found in configuration.");
 
 
 Console.WriteLine("Testing Database Connectivity...");

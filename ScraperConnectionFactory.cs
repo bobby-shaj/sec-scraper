@@ -1,6 +1,7 @@
 ﻿using FocusDB.Repositories.Interfaces;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
+using SixLabors.ImageSharp;
 
 namespace sec_scraper
 {
@@ -11,7 +12,7 @@ namespace sec_scraper
         public ScraperConnectionFactory(IConfiguration config)
         {
             _connectionString = config.GetConnectionString("DBConnection")
-                ?? throw new InvalidOperationException("DBConnection string is missing from configuration.");
+                ?? throw new ArgumentNullException(nameof(config));
         }
 
         /// <summary>

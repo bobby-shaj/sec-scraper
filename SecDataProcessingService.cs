@@ -81,7 +81,7 @@ namespace sec_scraper
                 int filingCountDB = await _filingRepository.GetFilingCount(_cik);
                 var delta = filingCountSEC - filingCountDB;
 
-                delta = _cik.Equals("0001590418") ? delta = 45 : delta = 10;
+                delta = _cik.Equals("0001590418") ? delta = 5 : delta = 10;
 
                 if (delta > 0)
                 {
@@ -106,8 +106,8 @@ namespace sec_scraper
                         var filingExhibitsList = await GetFilingExhibitData(_cik, fetchedSecData, delta, browser);
                         var ids = await InsertNewFilingsToDB(fetchedSecData!, filingExhibitsList, delta, _cik, _filingRepository);
                         await CreateFilingPdfDocs(_cik, filingExhibitsList, fetchedSecData, browser);
-                        await InsertFilingExhibitsToDB(ids, filingExhibitsList!, _filingRepository);
                         await DownloadFiles(_cik, fetchedSecData, delta);
+                        await InsertFilingExhibitsToDB(ids, filingExhibitsList!, _filingRepository);
                         Console.WriteLine("Done!");
                     }
                 }
@@ -190,7 +190,7 @@ namespace sec_scraper
                             resultMs.Position = 0;
 
                             // --- Azure Storage Upload ---
-                            string blobName = $"{cik}/{accessionNum}/file.pdf";
+                            string blobName = $"filing-documents/{accessionNum}/file.pdf";
                             var blobClient = _containerClient.GetBlobClient(blobName);
 
                             await blobClient.UploadAsync(resultMs, new BlobUploadOptions
@@ -199,7 +199,7 @@ namespace sec_scraper
                             });
 
                             _logger.LogInformation("✅ Successfully uploaded merged PDF: {BlobName}", blobName);
-                        }
+                         }
                     }
                 }
                 catch (Exception ex)
@@ -464,7 +464,7 @@ namespace sec_scraper
 
                 var xlsxfileURL = $"https://www.sec.gov/Archives/edgar/data/{cik}/{accessionNumNoDashes}/Financial_Report.xlsx";
                 // Define the virtual path in Azure 
-                string blobNameXlsx = $"{cik}/{accessionNum}/Financial_Report.xlsx";
+                string blobNameXlsx = $"filing-documents/{accessionNum}/Financial_Report.xlsx";
                 var blobClientXlsx = _containerClient.GetBlobClient(blobNameXlsx);
 
                 try
@@ -508,7 +508,7 @@ namespace sec_scraper
                 }
 
                 var xbrlfileURL = $"https://www.sec.gov/Archives/edgar/data/{cik}/{accessionNumNoDashes}/{accessionNum}-xbrl.zip";
-                string blobNameZip = $"{cik}/{accessionNum}/{accessionNum}-xbrl.zip";
+                string blobNameZip = $"filing-documents/{accessionNum}/{accessionNum}-xbrl.zip";
                 var blobClientZip = _containerClient.GetBlobClient(blobNameZip);
 
                 try
