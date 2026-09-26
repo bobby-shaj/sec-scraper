@@ -81,7 +81,7 @@ namespace sec_scraper
                 int filingCountDB = await _filingRepository.GetFilingCount(_cik);
                 var delta = filingCountSEC - filingCountDB;
 
-                delta = _cik.Equals("0001590418") ? delta = 5 : delta = 67;
+                delta = _cik.Equals("0001590418") ? delta = 5 : delta = 14;
 
                 if (delta > 0)
                 {
@@ -275,9 +275,6 @@ namespace sec_scraper
                 }
             }
 
-
-
-
             foreach (var pageUrl in indexFilesUrlList)
             {
                 // SEC Rule: Max 10 requests per second. Adding a small delay 
@@ -361,7 +358,7 @@ namespace sec_scraper
                     }
                 }
             }
-            resultList.Reverse();
+            //resultList.Reverse();
             return resultList!;
         }
 
@@ -372,7 +369,7 @@ namespace sec_scraper
                                                            IFilingRepository filingRepository)
         {
             // Extract/create Filing class for each new SEC filing
-            var newFilingsList = new List<Filing>();
+            List<Filing> newFilingsList = new List<Filing>();
             for (int i = 0; i < rowsToAddCount; i++)
             {
                 Filing newFiling = new Filing()
@@ -390,6 +387,7 @@ namespace sec_scraper
                 };
                 newFilingsList.Add(newFiling);
             }
+            newFilingsList.Reverse();
             return await filingRepository.InsertFilingsAndReturnIDs(newFilingsList);
         }
 
