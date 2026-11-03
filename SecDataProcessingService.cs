@@ -81,7 +81,7 @@ namespace sec_scraper
                 int filingCountDB = await _filingRepository.GetFilingCount(_cik);
                 var delta = filingCountSEC - filingCountDB;
 
-                delta = _cik.Equals("0001590418") ? delta = 5 : delta = 25;
+                delta = _cik.Equals("0001590418") ? delta = 5 : delta = 88;
 
                 if (delta > 0)
                 {
@@ -376,6 +376,7 @@ namespace sec_scraper
                 {
                     AccessionNum = fetchedSecData?.AccessionNumber?[i],
                     FilingDate = fetchedSecData?.FilingDate?[i],
+                    ReportDate = fetchedSecData?.ReportDate?[i],
                     FilingType = fetchedSecData?.Form?[i],
                     Size = fetchedSecData?.Size?[i],
                     IsXBRL = fetchedSecData?.IsXBRL?[i],
